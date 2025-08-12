@@ -18,6 +18,7 @@ type ActionState = { error?: string; success?: string };
 
 function TeamMembers() {
   const { data: teamData } = useSWR<TeamDataWithMembers>('/api/team', fetcher);
+  const { data: currentUser } = useSWR<User>('/api/user', fetcher);
   const [removeState, removeAction, isRemovePending] = useActionState<ActionState, FormData>(removeTeamMember, {});
 
   if (!teamData?.teamMembers?.length) {
@@ -34,6 +35,14 @@ function TeamMembers() {
   }
 
   const getUserDisplayName = (user: Pick<User, 'id' | 'name' | 'email'>) => user.name || user.email || 'Unknown User';
+
+  const isOwner = currentUser?.role === 'owner';
+  const canRemove = (memberUserId: number, memberRole: string) => {
+    if (!isOwner) return false;
+    // Owners can remove anyone except themselves
+    if (memberUserId === currentUser?.id) return false;
+    return true;
+  };
 
   return (
     <Card className="mb-8">
@@ -55,7 +64,7 @@ function TeamMembers() {
                   <p className="text-sm text-muted-foreground capitalize">{member.role}</p>
                 </div>
               </div>
-              {index > 1 ? (
+              {canRemove(member.user.id, member.role) ? (
                 <form action={removeAction}>
                   <input type="hidden" name="memberId" value={member.id} />
                   <Button type="submit" variant="outline" size="sm" disabled={isRemovePending}>
@@ -158,7 +167,7 @@ function AddChildForm() {
   const { data: user } = useSWR<User>('/api/user', fetcher);
   const isAdultOrOwner = user?.role === 'owner' || user?.role === 'adult';
   const [state, formAction, isPending] = useActionState<ActionState, FormData>(addChild, {});
-  const parentOptions = teamData?.teamMembers ?? [];
+  const parentOptions = (teamData?.teamMembers ?? []).filter((m) => m.role === 'owner' || m.role === 'adult');
 
   return (
     <Card>

@@ -361,7 +361,7 @@ export const updateAccount = validatedActionWithUser(
 );
 
 const removeTeamMemberSchema = z.object({
-  memberId: z.number()
+  memberId: z.coerce.number()
 });
 
 export const removeTeamMember = validatedActionWithUser(
@@ -463,7 +463,7 @@ export const inviteTeamMember = validatedActionWithUser(
 // Add a child without email, attached to the parent in the same family
 const addChildSchema = z.object({
   name: z.string().min(1).max(100),
-  parentId: z.number().int()
+  parentId: z.coerce.number().int()
 });
 
 export const addChild = validatedActionWithUser(
@@ -499,7 +499,7 @@ export const addChild = validatedActionWithUser(
 
 // Remove a child
 const removeChildSchema = z.object({
-  childId: z.number().int()
+  childId: z.coerce.number().int()
 });
 
 export const removeChild = validatedActionWithUser(
