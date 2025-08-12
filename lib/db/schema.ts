@@ -13,7 +13,8 @@ export const users = pgTable('users', {
   name: varchar('name', { length: 100 }),
   email: varchar('email', { length: 255 }).notNull().unique(),
   passwordHash: text('password_hash').notNull(),
-  role: varchar('role', { length: 20 }).notNull().default('member'),
+  // Default to 'adult' for adults. Owners will be set explicitly where needed.
+  role: varchar('role', { length: 20 }).notNull().default('adult'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
   deletedAt: timestamp('deleted_at'),
@@ -41,6 +42,19 @@ export const teamMembers = pgTable('team_members', {
     .references(() => teams.id),
   role: varchar('role', { length: 50 }).notNull(),
   joinedAt: timestamp('joined_at').notNull().defaultNow(),
+});
+
+// Children belong to a family (team) and are attached to a parent user.
+export const children = pgTable('children', {
+  id: serial('id').primaryKey(),
+  teamId: integer('team_id')
+    .notNull()
+    .references(() => teams.id),
+  name: varchar('name', { length: 100 }).notNull(),
+  parentId: integer('parent_id')
+    .notNull()
+    .references(() => users.id),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 
 export const activityLogs = pgTable('activity_logs', {
@@ -72,6 +86,7 @@ export const teamsRelations = relations(teams, ({ many }) => ({
   teamMembers: many(teamMembers),
   activityLogs: many(activityLogs),
   invitations: many(invitations),
+  children: many(children),
 }));
 
 export const usersRelations = relations(users, ({ many }) => ({
@@ -112,6 +127,17 @@ export const activityLogsRelations = relations(activityLogs, ({ one }) => ({
   }),
 }));
 
+export const childrenRelations = relations(children, ({ one }) => ({
+  team: one(teams, {
+    fields: [children.teamId],
+    references: [teams.id],
+  }),
+  parent: one(users, {
+    fields: [children.parentId],
+    references: [users.id],
+  }),
+}));
+
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type Team = typeof teams.$inferSelect;
@@ -126,7 +152,12 @@ export type TeamDataWithMembers = Team & {
   teamMembers: (TeamMember & {
     user: Pick<User, 'id' | 'name' | 'email'>;
   })[];
+  children: (Child & {
+    parent: Pick<User, 'id' | 'name' | 'email'>;
+  })[];
 };
+export type Child = typeof children.$inferSelect;
+export type NewChild = typeof children.$inferInsert;
 
 export enum ActivityType {
   SIGN_UP = 'SIGN_UP',

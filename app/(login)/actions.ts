@@ -14,7 +14,9 @@ import {
   type NewTeamMember,
   type NewActivityLog,
   ActivityType,
-  invitations
+  invitations,
+  children,
+  type NewChild
 } from '@/lib/db/schema';
 import { comparePasswords, hashPassword, setSession } from '@/lib/auth/session';
 import { redirect } from 'next/navigation';
@@ -181,14 +183,14 @@ export const signUp = validatedAction(signUpSchema, async (data, formData) => {
   } else {
     // Create a new team if there's no invitation
     const newTeam: NewTeam = {
-      name: `${email}'s Team`
+      name: `${email}'s Family`
     };
 
     [createdTeam] = await db.insert(teams).values(newTeam).returning();
 
     if (!createdTeam) {
       return {
-        error: 'Failed to create team. Please try again.',
+        error: 'Failed to create family. Please try again.',
         email,
         password
       };
@@ -197,7 +199,7 @@ export const signUp = validatedAction(signUpSchema, async (data, formData) => {
     teamId = createdTeam.id;
     userRole = 'owner';
 
-    await logActivity(teamId, createdUser.id, ActivityType.CREATE_TEAM);
+  await logActivity(teamId, createdUser.id, ActivityType.CREATE_TEAM);
   }
 
   const newTeamMember: NewTeamMember = {
@@ -369,7 +371,7 @@ export const removeTeamMember = validatedActionWithUser(
     const userWithTeam = await getUserWithTeam(user.id);
 
     if (!userWithTeam?.teamId) {
-      return { error: 'User is not part of a team' };
+  return { error: 'User is not part of a family' };
     }
 
     await db
@@ -387,13 +389,13 @@ export const removeTeamMember = validatedActionWithUser(
       ActivityType.REMOVE_TEAM_MEMBER
     );
 
-    return { success: 'Team member removed successfully' };
+  return { success: 'Family member removed successfully' };
   }
 );
 
 const inviteTeamMemberSchema = z.object({
   email: z.string().email('Invalid email address'),
-  role: z.enum(['member', 'owner'])
+  role: z.enum(['adult', 'owner'])
 });
 
 export const inviteTeamMember = validatedActionWithUser(
@@ -403,7 +405,7 @@ export const inviteTeamMember = validatedActionWithUser(
     const userWithTeam = await getUserWithTeam(user.id);
 
     if (!userWithTeam?.teamId) {
-      return { error: 'User is not part of a team' };
+      return { error: 'User is not part of a family' };
     }
 
     const existingMember = await db
@@ -416,7 +418,7 @@ export const inviteTeamMember = validatedActionWithUser(
       .limit(1);
 
     if (existingMember.length > 0) {
-      return { error: 'User is already a member of this team' };
+  return { error: 'User is already a member of this family' };
     }
 
     // Check if there's an existing invitation
@@ -433,12 +435,12 @@ export const inviteTeamMember = validatedActionWithUser(
       .limit(1);
 
     if (existingInvitation.length > 0) {
-      return { error: 'An invitation has already been sent to this email' };
+  return { error: 'An invitation has already been sent to this email' };
     }
 
     // Create a new invitation
     await db.insert(invitations).values({
-      teamId: userWithTeam.teamId,
+  teamId: userWithTeam.teamId,
       email,
       role,
       invitedBy: user.id,
@@ -455,5 +457,64 @@ export const inviteTeamMember = validatedActionWithUser(
     // await sendInvitationEmail(email, userWithTeam.team.name, role)
 
     return { success: 'Invitation sent successfully' };
+  }
+);
+
+// Add a child without email, attached to the parent in the same family
+const addChildSchema = z.object({
+  name: z.string().min(1).max(100),
+  parentId: z.number().int()
+});
+
+export const addChild = validatedActionWithUser(
+  addChildSchema,
+  async (data, _, user) => {
+    const { name, parentId } = data;
+    const userWithTeam = await getUserWithTeam(user.id);
+    if (!userWithTeam?.teamId) {
+      return { error: 'User is not part of a family' };
+    }
+
+    // Ensure the specified parent is in the same family
+    const [parentMembership] = await db
+      .select()
+      .from(teamMembers)
+      .where(and(eq(teamMembers.userId, parentId), eq(teamMembers.teamId, userWithTeam.teamId)))
+      .limit(1);
+
+    if (!parentMembership) {
+      return { error: 'Parent is not part of your family' };
+    }
+
+    const newChild: NewChild = {
+      name,
+      teamId: userWithTeam.teamId,
+      parentId
+    };
+
+    await db.insert(children).values(newChild);
+    return { success: 'Child added to your family' };
+  }
+);
+
+// Remove a child
+const removeChildSchema = z.object({
+  childId: z.number().int()
+});
+
+export const removeChild = validatedActionWithUser(
+  removeChildSchema,
+  async (data, _, user) => {
+    const { childId } = data;
+    const userWithTeam = await getUserWithTeam(user.id);
+    if (!userWithTeam?.teamId) {
+      return { error: 'User is not part of a family' };
+    }
+
+    await db
+      .delete(children)
+      .where(and(eq(children.id, childId), eq(children.teamId, userWithTeam.teamId)));
+
+    return { success: 'Child removed from your family' };
   }
 );

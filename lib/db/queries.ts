@@ -1,6 +1,6 @@
 import { desc, and, eq, isNull } from 'drizzle-orm';
 import { db } from './drizzle';
-import { activityLogs, teamMembers, teams, users } from './schema';
+import { activityLogs, teamMembers, teams, users, children } from './schema';
 import { cookies } from 'next/headers';
 import { verifyToken } from '@/lib/auth/session';
 
@@ -105,26 +105,63 @@ export async function getTeamForUser() {
     return null;
   }
 
-  const result = await db.query.teamMembers.findFirst({
-    where: eq(teamMembers.userId, user.id),
-    with: {
-      team: {
-        with: {
-          teamMembers: {
-            with: {
-              user: {
-                columns: {
-                  id: true,
-                  name: true,
-                  email: true
+  try {
+    const result = await db.query.teamMembers.findFirst({
+      where: eq(teamMembers.userId, user.id),
+      with: {
+        team: {
+          with: {
+            teamMembers: {
+              with: {
+                user: {
+                  columns: {
+                    id: true,
+                    name: true,
+                    email: true
+                  }
+                }
+              }
+            },
+            children: {
+              with: {
+                parent: {
+                  columns: {
+                    id: true,
+                    name: true,
+                    email: true
+                  }
                 }
               }
             }
           }
         }
       }
-    }
-  });
-
-  return result?.team || null;
+    });
+    return result?.team || null;
+  } catch (e: any) {
+    // Fallback if the children table hasn't been migrated yet
+    const result = await db.query.teamMembers.findFirst({
+      where: eq(teamMembers.userId, user.id),
+      with: {
+        team: {
+          with: {
+            teamMembers: {
+              with: {
+                user: {
+                  columns: {
+                    id: true,
+                    name: true,
+                    email: true
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    });
+    if (!result?.team) return null;
+    // Attach an empty children array to keep API shape stable
+    return { ...result.team, children: [] } as any;
+  }
 }
